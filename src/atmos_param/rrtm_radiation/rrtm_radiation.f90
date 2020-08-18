@@ -81,6 +81,11 @@
         ! heating rates and fluxes, zenith angle when in-between radiation time steps
         real(kind=rb),allocatable,dimension(:,:)   :: sw_flux,lw_flux,zencos, olr, toa_sw! surface and TOA fluxes, cos(zenith angle) 
                                                                             ! dimension (lon x lat)
+                                                                            
+        ! MML surface fluxes
+        real(kind=rb),allocatable,dimension(:,:)   :: mml_fsds, mml_fsns, mml_fsus, mml_flds, mml_flus, mml_flns    
+        																	! dimension (lon x lat)                                                               
+                                                                            
         real(kind=rb),allocatable,dimension(:,:,:) :: tdt_rad               ! heating rate [K/s]
                                                                             ! dimension (lon x lat x pfull)
         real(kind=rb),allocatable,dimension(:,:,:) :: tdt_sw_rad,tdt_lw_rad ! SW, LW radiation heating rates,
@@ -124,7 +129,6 @@
         logical            :: do_read_ozone=.false.           ! read ozone from an external file?
                                                               !  this is the only way to get ozone into the model
         character(len=256) :: ozone_file='ozone'              !  file name of ozone file to read
-        logical            :: input_o3_file_is_mmr=.true.     ! Does the ozone input file contain values as a mass mixing ratio (set to true) or a volume mixing ratio (set to false)?
         logical            :: do_read_h2o=.false.             ! read water vapor from an external file?
         character(len=256) :: h2o_file='h2o'                  !  file name of h2o file to read
         logical            :: do_read_co2=.false.             ! read co2 concentration from an external file?
@@ -133,9 +137,9 @@
 
 ! secondary gases (CH4,N2O,O2,CFC11,CFC12,CFC22,CCL4)
         logical            :: include_secondary_gases=.false. ! non-zero values for above listed secondary gases?
-        real(kind=rb)      :: ch4_val  = 0.                   !  if .true., value for CH4 vmr
-        real(kind=rb)      :: n2o_val  = 0.                   !                       N2O vmr
-        real(kind=rb)      :: o2_val   = 0.                   !                       O2 vmr
+        real(kind=rb)      :: ch4_val  = 0.                   !  if .true., value for CH4
+        real(kind=rb)      :: n2o_val  = 0.                   !                       N2O
+        real(kind=rb)      :: o2_val   = 0.                   !                       O2
         real(kind=rb)      :: cfc11_val= 0.                   !                       CFC11
         real(kind=rb)      :: cfc12_val= 0.                   !                       CFC12
         real(kind=rb)      :: cfc22_val= 0.                   !                       CFC22
@@ -151,7 +155,7 @@
         real(kind=rb)      :: fixed_water_pres = 100.e02      ! if so, above which pressure level? [hPa]
         real(kind=rb)      :: fixed_water_lat  = 90.          ! if so, equatorward of which latitude? [deg]
         logical            :: do_zm_tracers=.false.           ! Feed only the zonal mean of tracers to radiation
-        logical            :: convert_sphum_to_vmr=.true.     ! Model is fed sphum, but RRTM wants vmr. Set to true to make this conversion. May want false if using do_read_h2o and input file is a vmr.             
+            
 ! radiation time stepping and spatial sampling
         integer(kind=im)   :: dt_rad=0                        ! Radiation time step - every step if dt_rad<dt_atmos
         logical            :: store_intermediate_rad =.true.  ! Keep rad constant over entire dt_rad?
@@ -183,15 +187,18 @@
 !
 !-------------------- diagnostics fields -------------------------------
 
-        integer :: id_tdt_rad, id_tdt_sw, id_tdt_lw, id_coszen, id_flux_sw, id_flux_lw, id_olr, id_toa_sw, id_albedo,id_ozone, id_co2, id_fracday, id_half_level_temp, id_full_level_temp
+        integer :: id_tdt_rad, id_tdt_sw, id_tdt_lw, id_coszen, id_flux_sw, id_flux_lw, id_olr, id_toa_sw, id_albedo,id_ozone, id_co2, id_fracday
+        ! MML: add surface net fluxes
+        integer :: id_mml_fsds, id_mml_fsus, id_mml_fsns, id_mml_flds, id_mml_flus, id_mml_flns
+        
         character(len=14), parameter :: mod_name_rad = 'rrtm_radiation' !s changed parameter name from mod_name to mod_name_rad as compiler objected, presumably because mod_name also defined in idealized_moist_physics.F90 after use rrtm_vars is included. 
         real :: missing_value = -999.
 
 !---------------------------------------------------------------------------------------------------------------
 !---------------------------------------------------------------------------------------------------------------
 
-        namelist/rrtm_radiation_nml/ include_secondary_gases, do_read_ozone, ozone_file, input_o3_file_is_mmr, &
-             &do_read_h2o, h2o_file, convert_sphum_to_vmr, ch4_val, n2o_val, o2_val, cfc11_val, cfc12_val, cfc22_val, ccl4_val, &
+        namelist/rrtm_radiation_nml/ include_secondary_gases, do_read_ozone, ozone_file, &
+             &do_read_h2o, h2o_file, ch4_val, n2o_val, o2_val, cfc11_val, cfc12_val, cfc22_val, ccl4_val, &
              &do_read_radiation, radiation_file, rad_missing_value, &
              &do_read_sw_flux, sw_flux_file, do_read_lw_flux, lw_flux_file,&
              &h2o_lower_limit,temp_lower_limit,temp_upper_limit,co2ppmv, &
@@ -208,7 +215,7 @@
 !*****************************************************************************************
       module rrtm_radiation
         use parkind, only : im => kind_im, rb => kind_rb
-        use constants_mod,         only: pi, wtmozone, wtmh2o, gas_constant, rdgas
+        use constants_mod,         only: pi
         implicit none
     
       contains
@@ -229,7 +236,7 @@
           use fms_mod, only:          open_namelist_file, check_nml_error,  &
                                       &mpp_pe, mpp_root_pe, close_file, &
                                       &write_version_number, stdlog, &
-                                      &error_mesg, NOTE, WARNING, FATAL
+                                      &error_mesg, NOTE, WARNING, FATAL,string
           use time_manager_mod, only: time_type, length_of_day, get_time
 	  use transforms_mod,   only: get_grid_domain
 ! Local variables
@@ -284,6 +291,37 @@
                register_diag_field ( mod_name_rad, 'flux_sw', axes(1:2), Time, &
                  'Net SW surface flux', &
                  'W/m2', missing_value=missing_value               )
+          
+          ! MML register my net sfc fluxes:
+          ! id_mml_fsds, id_mml_fsus, id_mml_fsus, id_mml_flds, id_mml_flus, id_mml_flns
+          id_mml_fsds = &
+               register_diag_field ( mod_name_rad, 'mml_fsds', axes(1:2), Time, &
+                 'MML downwards SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_fsus = &
+               register_diag_field ( mod_name_rad, 'mml_fsus', axes(1:2), Time, &
+                 'MML upwards SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_fsns = &
+               register_diag_field ( mod_name_rad, 'mml_fsns', axes(1:2), Time, &
+                 'MML net SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flds = &
+               register_diag_field ( mod_name_rad, 'mml_flds', axes(1:2), Time, &
+                 'MML downwards LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flus = &
+               register_diag_field ( mod_name_rad, 'mml_flus', axes(1:2), Time, &
+                 'MML upwards LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flns = &
+               register_diag_field ( mod_name_rad, 'mml_flns', axes(1:2), Time, &
+                 'MML net LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          ! print that we did this? and print value of id_mml_fsds or something? 
+          !call error_mesg( 'MML rrtm_radiation_init', &
+          !	         'Tried to register MML sfc vars, id_mml_flns = '//trim(string(id_mml_flns)), WARNING)
+          
           id_flux_lw = &
                register_diag_field ( mod_name_rad, 'flux_lw', axes(1:2), Time, &
                  'LW surface flux', &
@@ -312,14 +350,6 @@
                register_diag_field ( mod_name_rad, 'fracday', axes(1:2), Time, &
                  'fracday', &
                  'none', missing_value=missing_value               )
-          id_half_level_temp = &
-               register_diag_field ( mod_name_rad, 't_half_rrtm',(/axes(1),axes(2),axes(4)/) , Time, &
-                 'Half level temperatures used by RRTM', &
-                 'K', missing_value=missing_value               )                 
-          id_full_level_temp = &
-               register_diag_field ( mod_name_rad, 't_full_rrtm',axes(1:3) , Time, &
-                 'Full level temperatures used by RRTM', &
-                 'K', missing_value=missing_value               )                     
 ! 
 !------------ make sure namelist choices are consistent -------
 ! this does not work at the moment, as dt_atmos from coupler_mod induces a circular dependency at compilation
@@ -450,6 +480,22 @@
                allocate(sw_flux(size(lonb,1)-1,size(latb,2)-1))
           if(store_intermediate_rad .or. id_flux_lw > 0) &
                allocate(lw_flux(size(lonb,1)-1,size(latb,2)-1))
+        
+          ! MML surface vairable allocation:    
+          if(store_intermediate_rad .or. id_mml_fsns > 0) &
+               allocate(mml_fsns(size(lonb,1)-1,size(latb,2)-1))     
+          if(store_intermediate_rad .or. id_mml_fsds > 0) &
+               allocate(mml_fsds(size(lonb,1)-1,size(latb,2)-1)) 
+          if(store_intermediate_rad .or. id_mml_fsus > 0) &
+               allocate(mml_fsus(size(lonb,1)-1,size(latb,2)-1))  
+          if(store_intermediate_rad .or. id_mml_flns > 0) &
+               allocate(mml_flns(size(lonb,1)-1,size(latb,2)-1))     
+          if(store_intermediate_rad .or. id_mml_flds > 0) &
+               allocate(mml_flds(size(lonb,1)-1,size(latb,2)-1)) 
+          if(store_intermediate_rad .or. id_mml_flus > 0) &
+               allocate(mml_flus(size(lonb,1)-1,size(latb,2)-1))   
+          ! Do we not deallocate variables in ISCA? How does that work?  
+               
 	      if(id_olr > 0) &
 	           allocate(olr(size(lonb,1)-1,size(latb,2)-1))
 	      if(id_toa_sw > 0) &
@@ -524,12 +570,15 @@
 !*****************************************************************************************
         subroutine run_rrtmg(is,js,Time,lat,lon,p_full,p_half,albedo,q,t,t_surf_rad,tdt,coszen,flux_sw,flux_lw)
 !
+!
+! 		! MML: flux_sw is sfc sw down and flux_lw is sfc lw down (NOT net!)
+
 ! Driver for RRTMG radiation scheme.
 ! Prepares all inputs, calls SW and LW radiation schemes, 
 !  transforms outputs back into FMS form
 !
 ! Modules
-          use fms_mod, only:         error_mesg, FATAL
+          use fms_mod, only:         error_mesg, FATAL, string, NOTE, WARNING  ! MML added string, NOTE, WARNING
           use mpp_mod, only:         mpp_pe,mpp_root_pe
           use rrtmg_lw_rad, only:    rrtmg_lw
           use rrtmg_sw_rad, only:    rrtmg_sw
@@ -559,13 +608,17 @@
                                                                                ! dimension (lat x lon)
           real(kind=rb),dimension(:,:),intent(in)           :: albedo          ! surface albedo
                                                                                ! dimension (lat x lon)
+                                                            ! MML: use albedo to get net sfc sw
+                                                            
           real(kind=rb),dimension(:,:),intent(in)           :: t_surf_rad      ! surface temperature [K]
                                                                                ! dimension (lat x lon)
+                                                            ! MML: use t_surf_rad to get net sfc LW 
+                                                            
           real(kind=rb),dimension(:,:,:),intent(inout)      :: tdt             ! heating rate [K/s]
                                                                                ! dimension (lat x lon x pfull)
           real(kind=rb),dimension(:,:),intent(out)          :: coszen          ! cosine of zenith angle
                                                                                ! dimension (lat x lon)
-          real(kind=rb),dimension(:,:),intent(out),optional :: flux_sw,flux_lw ! surface fluxes [W/m2]
+          real(kind=rb),dimension(:,:),intent(out),optional :: flux_sw,flux_lw ! surface fluxes [W/m2]   (not net fluxes, but downwards fluxes!)
                                                                                ! dimension (lat x lon)
                                                                                ! need to have both or none!
 !---------------------------------------------------------------------------------------------------------------
@@ -581,12 +634,17 @@
                ,swuflx, swdflx, swuflxc, swdflxc
           real(kind=rb),dimension(size(q,1)/lonstep,size(q,2),size(q,3)  ) :: swijk,lwijk
           real(kind=rb),dimension(size(q,1)/lonstep,size(q,2)) :: swflxijk,lwflxijk
+         
+          ! MML add temprorary variables for net surface fluxes
+          real(kind=rb),dimension(size(q,1)/lonstep,size(q,2)) :: mml_fsds_temp,mml_fsus_temp,mml_fsns_temp,mml_flds_temp,mml_flus_temp,mml_flns_temp
+          ! MML add history variables for net surface fluxes (see if I can get away with not sending them out of this function)
+         
           real(kind=rb),dimension(ncols_rrt,nlay_rrt+1):: phalf,thalf
           real(kind=rb),dimension(ncols_rrt)   :: tsrf,cosz_rr,albedo_rr
           real(kind=rb) :: dlon,dlat,dj,di 
           type(time_type) :: Time_loc
           real(kind=rb),dimension(size(q,1),size(q,2)) :: albedo_loc
-          real(kind=rb),dimension(size(q,1),size(q,2),size(q,3)) :: q_tmp, h2o_vmr
+          real(kind=rb),dimension(size(q,1),size(q,2),size(q,3)) :: q_tmp
           real(kind=rb),dimension(size(q,1),size(q,2)) :: fracsun
 
 	  integer :: year_in_s
@@ -702,10 +760,6 @@
           !get ozone 
           if(do_read_ozone)then
              call interpolator( o3_interp, Time_loc, p_half, o3f, trim(ozone_file))
-             if (input_o3_file_is_mmr==.true.) then
-                 o3f = o3f * (1000. * gas_constant / rdgas ) / wtmozone !RRTM expects all abundances to be volume mixing ratio. So if input file is mass mixing ratio, it must be converted to volume mixing ratio using the molar masses of dry air and ozone. 
-                 ! Molar mass of dry air calculated from gas_constant / rdgas, and converted into g/mol from kg/mol by multiplying by 1000. This conversion is necessary because wtmozone is in g/mol.
-             endif 
           endif
 
           !get co2
@@ -755,17 +809,6 @@
                 enddo
              enddo
           endif
-
-
-          if(convert_sphum_to_vmr) then
-              h2o_vmr = (q_tmp/(1.-q_tmp))*(1000. * gas_constant / rdgas)/wtmh2o
-                 ! Convert sphum to vmr using q/1-q to get mmr, then divide by molar mass ratio.
-                 ! Molar mass of dry air calculated from gas_constant / rdgas, and converted into g/mol from kg/mol by multiplying by 1000. This conversion is necessary because wtmh2o is in g/mol.              
-          else
-              h2o_vmr = q_tmp
-          endif
-
-
 !---------------------------------------------------------------------------------------------------------------
           !RRTM's first pressure level is at the surface - need to inverse order
           !also, RRTM's pressures are in hPa
@@ -777,7 +820,7 @@
                &phalf(:,sk+1) = pfull(:,sk)*0.5
           tfull = reshape(t     (1:si:lonstep,:,sk  :1:-1),(/ si*sj/lonstep,sk   /))
           thalf = reshape(t_half(1:si:lonstep,:,sk+1:1:-1),(/ si*sj/lonstep,sk+1 /))
-          h2o   = reshape(h2o_vmr (1:si:lonstep,:,sk  :1:-1),(/ si*sj/lonstep,sk   /))
+          h2o   = reshape(q_tmp (1:si:lonstep,:,sk  :1:-1),(/ si*sj/lonstep,sk   /))
           if(do_read_ozone)o3 = reshape(o3f(1:si:lonstep,:,sk :1:-1),(/ si*sj/lonstep,sk  /))
           if(do_read_co2)co2 = reshape(co2f(1:si:lonstep,:,sk :1:-1),(/ si*sj/lonstep,sk  /))
 
@@ -819,6 +862,7 @@
                   tauaer    , zro_sw   , zro_sw   , zro_sw    , &
                   ! output
                   swuflx    , swdflx   , swhr     , swuflxc  , swdflxc, swhrc)
+                  ! MML: aha, I need swuflx and swdflx! Though I just want it at the surface
           else
              call rrtmg_sw &
                   (ncols_rrt, nlay_rrt , icld     , iaer     , &
@@ -916,12 +960,33 @@
           ! get the surface fluxes
           if(present(flux_sw).and.present(flux_lw))then
              !only surface fluxes are needed
-             swflxijk = reshape(swdflx(:,1)-swuflx(:,1),(/ si/lonstep,sj /)) ! net down SW flux
-             lwflxijk = reshape(  dflx(:,1)            ,(/ si/lonstep,sj /)) ! down LW flux
+             swflxijk = reshape(swdflx(:,1)-swuflx(:,1),(/ si/lonstep,sj /)) ! net down SW flux  ! mml at sfc
+             lwflxijk = reshape(  dflx(:,1)            ,(/ si/lonstep,sj /)) ! down LW flux      ! mml at sfc
+             ! MML:
+             ! I think what I need for my surface fluxes is:
+             ! swdflx(:,1), swuflx(:,1), dflx(:,1), and sigma * tsrf**4 
+             ! (they're all the wrong shape)
+             ! oh wait!
+             ! uflx(:,1) and dflx(:,1) are the longwave fluxes I need!
+             ! But I have to reshape them, probably like so:
+             ! lwflxijk = reshape(  uflx(:,sk+1)-dflx(:,sk+1),(/ si/lonstep,sj /))
+             
+             ! MML SW
+             mml_fsds_temp = reshape(  swdflx(:,1)            ,(/ si/lonstep,sj /)) 
+             mml_fsus_temp = reshape(  swuflx(:,1)            ,(/ si/lonstep,sj /))
+             mml_fsns_temp = reshape(  swdflx(:,1) -  swuflx(:,1)  ,(/ si/lonstep,sj /))
+             ! MML LW
+             mml_flds_temp = reshape(  dflx(:,1)            ,(/ si/lonstep,sj /)) 
+             mml_flus_temp = reshape(  uflx(:,1)            ,(/ si/lonstep,sj /))
+             mml_flns_temp = reshape(  dflx(:,1) -  uflx(:,1)  ,(/ si/lonstep,sj /))
+              
              dlon=1./lonstep
              do i=1,size(swijk,1)
                 i1 = i+1
                 ! close toroidally
+                
+                ! MML I guess I should do this too?
+                
                 if(i1 > size(swijk,1)) i1=1
                 do ij=1,lonstep
                    di = (ij-1)*dlon
@@ -929,9 +994,30 @@
                    if(do_zm_rad) then
                       flux_sw(ij1,:) = sum(swflxijk,1)/max(1,size(swflxijk,1))
                       flux_lw(ij1,:) = sum(lwflxijk,1)/max(1,size(lwflxijk,1))
+                      
+                      ! MML surface fluxes:
+                      mml_fsds(ij1,:) = sum(mml_fsds_temp,1)/max(1,size(mml_fsds_temp,1))
+                      mml_fsus(ij1,:) = sum(mml_fsus_temp,1)/max(1,size(mml_fsus_temp,1))
+                      mml_fsns(ij1,:) = sum(mml_fsns_temp,1)/max(1,size(mml_fsns_temp,1))
+                      
+                      mml_flds(ij1,:) = sum(mml_flds_temp,1)/max(1,size(mml_flds_temp,1))
+                      mml_flus(ij1,:) = sum(mml_flus_temp,1)/max(1,size(mml_flus_temp,1))
+                      mml_flns(ij1,:) = sum(mml_flns_temp,1)/max(1,size(mml_flns_temp,1))
+                      
                    else
                       flux_sw(ij1,:) = di*swflxijk(i1,:) + (1.-di)*swflxijk(i ,:)
                       flux_lw(ij1,:) = di*lwflxijk(i1,:) + (1.-di)*lwflxijk(i ,:)
+                      
+                      ! MML surface fluxes:
+                      mml_fsds(ij1,:) =  di*mml_fsds_temp(i1,:) + (1.-di)*mml_fsds_temp(i ,:)
+					  mml_fsus(ij1,:) =  di*mml_fsus_temp(i1,:) + (1.-di)*mml_fsus_temp(i ,:)
+ 					  mml_fsns(ij1,:) =  di*mml_fsns_temp(i1,:) + (1.-di)*mml_fsns_temp(i ,:)
+ 
+ 					  mml_flds(ij1,:) =  di*mml_flds_temp(i1,:) + (1.-di)*mml_flds_temp(i ,:)
+ 					  mml_flus(ij1,:) =  di*mml_flus_temp(i1,:) + (1.-di)*mml_flus_temp(i ,:)
+					  mml_flns(ij1,:) =  di*mml_flns_temp(i1,:) + (1.-di)*mml_flns_temp(i ,:)
+
+                      
                    endif
                 enddo
              enddo
@@ -957,6 +1043,7 @@
 		  ! OLR:		
           if(id_olr > 0)then
              lwflxijk = reshape(  uflx(:,sk+1)-dflx(:,sk+1),(/ si/lonstep,sj /)) ! OLR
+             ! MML: uflx(:,1) and dflx(:,1) are the longwave fluxes I need!
              dlon=1./lonstep
              do i=1,size(swijk,1)
                 i1 = i+1
@@ -990,23 +1077,28 @@
           ! check if we want surface albedo as a function of precipitation
           !  call diagnostics accordingly
           if(do_precip_albedo)then
-             call write_diag_rrtm(Time,is,js,o3f,co2f,fracsun,albedo_loc, t_full=t)
+             call write_diag_rrtm(Time,is,js,o3f,co2f,fracsun,albedo_loc)
           else
-             call write_diag_rrtm(Time,is,js,o3f,co2f,fracsun, t_full=t)
+             call write_diag_rrtm(Time,is,js,o3f,co2f,fracsun)
           endif
         end subroutine run_rrtmg
 
 !*****************************************************************************************
 !*****************************************************************************************
-        subroutine write_diag_rrtm(Time,is,js,ozone,cotwo,fracday,albedo_loc, t_full)
+        subroutine write_diag_rrtm(Time,is,js,ozone,cotwo,fracday,albedo_loc)
 ! 
 ! write out diagnostics fields
 !
 ! Modules
-          use rrtm_vars,only:         sw_flux,lw_flux,zencos,tdt_rad,tdt_sw_rad,tdt_lw_rad,t_half,&
+          use rrtm_vars,only:         sw_flux,lw_flux,zencos,tdt_rad,tdt_sw_rad,tdt_lw_rad,&
                                       &id_tdt_rad,id_tdt_sw,id_tdt_lw,id_coszen,&
                                       &id_flux_sw,id_flux_lw,id_albedo,id_ozone, id_co2, id_fracday,&
-									  &id_olr,id_toa_sw,olr,toa_sw, id_half_level_temp, id_full_level_temp
+									  &id_olr,id_toa_sw,olr,toa_sw,&
+									  &id_mml_fsds,id_mml_fsns,id_mml_fsus,&
+									  &id_mml_flds,id_mml_flns,id_mml_flus,&
+									  &mml_fsds,mml_fsns,mml_fsus,&
+									  &mml_flds,mml_flns,mml_flus
+									  
           use diag_manager_mod, only: register_diag_field, send_data
           use time_manager_mod,only:  time_type
 
@@ -1017,7 +1109,6 @@
           real(kind=rb),dimension(:,:,:),intent(in),optional :: ozone
           real(kind=rb),dimension(:,:,:),intent(in),optional :: cotwo
           real(kind=rb),dimension(:,:  ),intent(in),optional :: albedo_loc,fracday
-          real(kind=rb),dimension(:,:,:),intent(in),optional :: t_full          
 ! Local variables
           logical :: used
 
@@ -1050,6 +1141,29 @@
 !             used = send_data ( id_flux_lw, lw_flux, Time, is, js )
              used = send_data ( id_flux_lw, lw_flux, Time)
           endif
+          
+! MML surface radiative fluxes:
+!------- SW surface fluxes                   ------------
+          if ( id_mml_fsns > 0 ) then
+             used = send_data ( id_mml_fsns, mml_fsns, Time)
+          endif                         
+          if ( id_mml_fsds > 0 ) then
+             used = send_data ( id_mml_fsds, mml_fsds, Time)
+          endif     
+          if ( id_mml_fsus > 0 ) then
+             used = send_data ( id_mml_fsus, mml_fsus, Time)
+          endif             
+!------- LW surface fluxes                   ------------
+          if ( id_mml_flns > 0 ) then
+             used = send_data ( id_mml_flns, mml_flns, Time)
+          endif                        
+          if ( id_mml_flds > 0 ) then
+             used = send_data ( id_mml_flds, mml_flds, Time)
+          endif     
+          if ( id_mml_flus > 0 ) then
+             used = send_data ( id_mml_flus, mml_flus, Time)
+          endif      
+                    
 !------- Net LW TOA flux                   ------------
           if ( id_olr > 0 ) then
 		     used = send_data ( id_olr, olr, Time)
@@ -1077,14 +1191,6 @@
           if ( present(fracday) .and. id_fracday > 0 ) then
              used = send_data ( id_fracday, fracday, Time)
           endif
-!------- Half-level temperatures                   ------------
-          if ( id_half_level_temp > 0 ) then
-             used = send_data ( id_half_level_temp, t_half , Time)
-          endif          
-!------- Full-level temperatures                   ------------
-          if (present(t_full) .and. id_full_level_temp > 0 ) then
-             used = send_data ( id_full_level_temp, t_full , Time)
-          endif          
 
         end subroutine write_diag_rrtm
 !*****************************************************************************************

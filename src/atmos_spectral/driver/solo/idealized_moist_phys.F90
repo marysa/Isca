@@ -141,6 +141,7 @@ real :: robert_bucket = 0.04   ! default robert coefficient for bucket depth LJJ
 real :: raw_bucket = 0.53       ! default raw coefficient for bucket depth LJJ
 ! end RG Add bucket
 
+
 namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roughness_heat,  &
                                       two_stream_gray, do_rrtm_radiation, do_damping,&
                                       mixed_layer_bc, do_simple,                     &
@@ -156,6 +157,9 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
 integer, parameter :: num_time_levels = 2 !RG Add bucket - number of time levels added to allow timestepping in this module
 real, allocatable, dimension(:,:,:)   :: bucket_depth      ! RG Add bucket
 real, allocatable, dimension(:,:    ) :: dt_bucket, filt   ! RG Add bucket
+! MML add runoff to bucket:
+real, allocatable, dimension(:,:)   :: runoff  ! not doing 2 time dimensions, instead will add a second "temp" variable...
+real, allocatable, dimension(:,:)   :: runoff_temp    
 
 real, allocatable, dimension(:,:)   ::                                        &
      z_surf,               &   ! surface height
@@ -264,6 +268,7 @@ integer ::           &
      id_bucket_depth_conv, &   ! bucket depth variation induced by convection  - RG Add bucket
      id_bucket_depth_cond, &   ! bucket depth variation induced by condensation  - RG Add bucket
      id_bucket_depth_lh,   &   ! bucket depth variation induced by LH  - RG Add bucket
+     id_runoff, &			! MML add runoff as a history var
      id_rh,          & 	 ! Relative humidity
      id_diss_heat_ray,&  ! Heat dissipated by rayleigh bottom drag if gp_surface=.True.
      id_z_tg,        &   ! Relative humidity
@@ -427,6 +432,8 @@ allocate(bucket_depth (is:ie, js:je, num_time_levels)); bucket_depth = init_buck
 allocate(depth_change_lh(is:ie, js:je))                       ! RG Add bucket
 allocate(depth_change_cond(is:ie, js:je))                     ! RG Add bucket
 allocate(depth_change_conv(is:ie, js:je))                     ! RG Add bucket
+allocate(runoff(is:ie, js:je))      ! MML add runoff 
+allocate(runoff_temp(is:ie, js:je)) ! MML add runoff temporary variable
 allocate(z_surf      (is:ie, js:je))
 allocate(t_surf      (is:ie, js:je))
 allocate(q_surf      (is:ie, js:je)); q_surf = 0.0
@@ -565,6 +572,10 @@ if(bucket) then
 where(land)
   bucket_depth(:,:,1)  = init_bucket_depth_land
   bucket_depth(:,:,2)  = init_bucket_depth_land
+  
+  ! MML initialize runoff at zero
+  runoff(:,:) = 0.0
+  
 end where
 endif
 !RG end Add bucket
@@ -643,6 +654,8 @@ if(bucket) then
        axes(1:2), Time, 'Tendency of bucket depth induced by Condensation', 'm/s')
   id_bucket_depth_lh = register_diag_field(mod_name, 'bucket_depth_lh',      &         ! RG Add bucket
        axes(1:2), Time, 'Tendency of bucket depth induced by LH', 'm/s')
+  id_runoff = register_diag_field(mod_name, 'runoff',      &         ! RG Add bucket
+       axes(1:2), Time, 'depth of surface reservoir lost as runoff', 'm')
 endif
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -978,7 +991,7 @@ if(.not.mixed_layer_bc) then
 !!$  t_surf = surface_temperature(tg(:,:,:,previous), p_full(:,:,:,current), p_half(:,:,:,current))
 end if
 
-
+! MML not sure if I need to pass runoff to surface_flux
 if(.not.gp_surface) then 
   call surface_flux(                                                        &
                   tg(:,:,num_levels,previous),                              &
@@ -1273,17 +1286,29 @@ if(bucket) then
    bucket_depth(:,:,future) = bucket_depth(:,:,future) + robert_bucket * (filt(:,:) + bucket_depth(:,:, future)) &
                            * (raw_bucket - 1.0)  
 
+   ! MML should I worry about this for runoff? not perfect water conservation... 
    where (bucket_depth <= 0.) bucket_depth = 0.
 
    ! truncate surface reservoir over land points
        where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
+       
+       		! MML calculate runoff:
+       		runoff_temp(:,:) = bucket_depth(:,:,future) - max_bucket_depth_land
+       		runoff(:,:) = runoff(:,:) + runoff_temp(:,:)
+       		
             bucket_depth(:,:,future) = max_bucket_depth_land
        end where
+
+   ! MML: Override the bucket at every timestep to be fully saturated with water 
+   ! (note: this breaks water conservation, but allows for the land to have unlimited access to water, like the ocean, while
+   ! still keeping other properties land-like)
+   !bucket_depth(:,:,future) = max_bucket_depth_land
 
    if(id_bucket_depth > 0) used = send_data(id_bucket_depth, bucket_depth(:,:,future), Time)
    if(id_bucket_depth_conv > 0) used = send_data(id_bucket_depth_conv, depth_change_conv(:,:), Time)
    if(id_bucket_depth_cond > 0) used = send_data(id_bucket_depth_cond, depth_change_cond(:,:), Time)
    if(id_bucket_depth_lh > 0) used = send_data(id_bucket_depth_lh, depth_change_lh(:,:), Time)
+   if(id_runoff > 0) used = send_data(id_runoff, runoff(:,:), Time)
 
 endif
 ! end Add bucket section
@@ -1295,7 +1320,7 @@ end subroutine idealized_moist_phys
 !=================================================================================================================================
 subroutine idealized_moist_phys_end
 
-deallocate (dt_bucket, filt)
+deallocate (dt_bucket, filt,runoff_temp)
 if(two_stream_gray)      call two_stream_gray_rad_end
 if(lwet_convection)      call qe_moist_convection_end
 if(do_ras)               call ras_end
@@ -1369,3 +1394,5 @@ END SUBROUTINE rh_calc
 !=================================================================================================================================
 
 end module idealized_moist_phys_mod
+
+

@@ -40,6 +40,12 @@
 |rrtm_radiation |  z_thalf 	|   	|   	|   	| |
 |rrtm_radiation |	flux_sw	| Net short wave surface flux	| (lat, lon)	| | |
 |rrtm_radiation |	flux_lw	| Long wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_fsns	| MML net short wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_fsds	| MML downwards short wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_fsus	| MML upwards short wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_flns	| MML net Long wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_flds	| MML downwards Long wave surface flux	| (lat, lon)	| | |
+|rrtm_radiation |	mml_flus	| MML upwards Long wave surface flux	| (lat, lon)	| | |
 |rrtm_radiation |	rrtm_albedo	 |Interactive albedo	| (lat, lon)	| | |
 |rrtm_radiation | 	tdt_sw	 | Temperature tendency due to SW radiation	| (pfull, lat, lon)	| | |
 |rrtm_radiation |	tdt_lw	| Temperature tendency due to LW radiation	| (pfull, lat, lon)	| | |
@@ -55,3 +61,4 @@
 
 
 The following variables need to be saved to do pressure interpolation: bk, pk and ps. These should be saved for each output frequency (i.e daily and monthly if both are used).
+
