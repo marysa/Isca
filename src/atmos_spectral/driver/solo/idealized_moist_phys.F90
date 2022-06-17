@@ -118,6 +118,9 @@ logical :: two_stream_gray = .true.
 logical :: do_rrtm_radiation = .false.
 logical :: do_socrates_radiation = .false.
 
+! MML: default swamp bucket off:
+logical :: do_mml_swamp = .false.
+
 !s MiMA uses damping
 logical :: do_damping = .false.
 
@@ -147,7 +150,7 @@ real :: robert_bucket = 0.04   ! default robert coefficient for bucket depth LJJ
 real :: raw_bucket = 0.53       ! default raw coefficient for bucket depth LJJ
 ! end RG Add bucket
 
-namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roughness_heat,  &
+namelist  / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roughness_heat,  &
                                       do_cloud_simple,                                       &
                                       two_stream_gray, do_rrtm_radiation, do_damping,&
                                       mixed_layer_bc, do_simple,                     &
@@ -157,7 +160,8 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
                                       gp_surface, convection_scheme,          &
                                       bucket, init_bucket_depth, init_bucket_depth_land, & !RG Add bucket 
                                       max_bucket_depth_land, robert_bucket, raw_bucket, &
-                                      do_socrates_radiation
+                                      do_socrates_radiation, &
+                                      do_mml_swamp   ! MML: add override to make a perpetual swamp
 
 
 integer, parameter :: num_time_levels = 2 !RG Add bucket - number of time levels added to allow timestepping in this module
@@ -1321,6 +1325,21 @@ if(bucket) then
        where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
             bucket_depth(:,:,future) = max_bucket_depth_land
        end where
+
+
+   ! MML: For swampland, set land bucket to always be at max_bucket_depth_land (fill land bucket at each timestep)
+   ! it would be much tidier if I were to add a namelist flag for bucket or not, then I wouldn't have to manually come
+   ! into the .F90 and turn the bucket into a swamp/turn it off, and could run multiple swamps or not at the same time. Later...
+   !call error_mesg('idealized_moist_phys','MML before bucket', NOTE)
+   if ( do_mml_swamp ) then
+       !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp in loop', NOTE)
+       where( land )
+           bucket_depth(:,:,future) = max_bucket_depth_land
+           !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp', NOTE)
+       end where
+   endif
+   
+   
 
    if(id_bucket_depth > 0) used = send_data(id_bucket_depth, bucket_depth(:,:,future), Time)
    if(id_bucket_depth_conv > 0) used = send_data(id_bucket_depth_conv, depth_change_conv(:,:), Time)

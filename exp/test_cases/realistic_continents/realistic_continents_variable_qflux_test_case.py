@@ -4,13 +4,17 @@ import numpy as np
 
 import f90nml
 
-from isca import IscaCodeBase, DiagTable, Experiment, Namelist, GFDL_BASE
+from isca import  IscaCodeBase, DiagTable, Experiment, Namelist, GFDL_BASE
+# MML see if it'll compile with Dry - yes it will but then obviously it crashes
+# from isca import DryCodeBase
 
-NCORES = 4
+#NCORES = 4
+NCORES = 32
 base_dir = os.path.dirname(os.path.realpath(__file__))
 # a CodeBase can be a directory on the computer,
 # useful for iterative development
 cb = IscaCodeBase.from_directory(GFDL_BASE)
+#cb = DryCodeBase.from_directory(GFDL_BASE)
 
 # or it can point to a specific git repo and commit id.
 # This method should ensure future, independent, reproducibility of results.
@@ -21,7 +25,7 @@ cb = IscaCodeBase.from_directory(GFDL_BASE)
 # is used to load the correct compilers.  The env file is always loaded from
 # $GFDL_BASE and not the checked out git repo.
 
-cb.compile()  # compile the source code to working directory $GFDL_WORK/codebase
+cb.compile( )  # compile the source code to working directory $GFDL_WORK/codebase
 
 # create an Experiment object to handle the configuration of model parameters
 # and output diagnostics
