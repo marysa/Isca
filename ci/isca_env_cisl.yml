@@ -1,0 +1,17 @@
+name: isca_env_cisl
+channels:
+- conda-forge
+dependencies:
+- dask
+- f90nml
+- ipykernel
+- jinja2
+- numpy
+- pandas
+- python=3.9
+- pip
+- pytest
+- sh
+- tqdm
+- xarray
+
