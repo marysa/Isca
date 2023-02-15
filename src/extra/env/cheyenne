@@ -1,5 +1,6 @@
 echo loadmodules
-source /glade/u/home/${USER}/.bashrc
+#source /glade/u/home/${USER}/.bashrc
+source /glade/u/home/${USER}/.tcshrc
 
 module load ncarenv/1.3
 module load intel/19.1.1
