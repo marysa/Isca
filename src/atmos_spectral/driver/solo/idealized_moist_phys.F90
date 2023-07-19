@@ -164,7 +164,7 @@ namelist  / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, rou
                                       bucket, init_bucket_depth, init_bucket_depth_land, & !RG Add bucket 
                                       max_bucket_depth_land, robert_bucket, raw_bucket, &
                                       do_socrates_radiation, &
-                                      do_mml_swamp   ! MML: add override to make a perpetual swamp
+                                      do_mml_swamp, do_mml_lakes   ! MML: add override to make a perpetual swamp
 
 
 integer, parameter :: num_time_levels = 2 !RG Add bucket - number of time levels added to allow timestepping in this module
