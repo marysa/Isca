@@ -1337,6 +1337,7 @@ if(bucket) then
        where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
             bucket_depth(:,:,future) = max_bucket_depth_land
        end where
+   endif
 
 
    ! MML: For swampland, set land bucket to always be at max_bucket_depth_land (fill land bucket at each timestep)
