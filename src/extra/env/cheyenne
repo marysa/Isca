@@ -1,4 +1,4 @@
-echo loadmodules
+eho loadmodules
 #source /glade/u/home/${USER}/.bashrc
 #source /glade/u/home/${USER}/.tcshrc
 
