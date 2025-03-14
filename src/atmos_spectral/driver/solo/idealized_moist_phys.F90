@@ -1402,6 +1402,18 @@ if(bucket) then
        end where
 
 
+      ! MML: For swampland, set land bucket to always be at max_bucket_depth_land (fill land bucket at each timestep)
+   ! it would be much tidier if I were to add a namelist flag for bucket or not, then I wouldn't have to manually come
+   ! into the .F90 and turn the bucket into a swamp/turn it off, and could run multiple swamps or not at the same time. Later...
+   !call error_mesg('idealized_moist_phys','MML before bucket', NOTE)
+   if ( do_mml_swamp ) then
+       !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp in loop', NOTE)
+       where( land )
+           bucket_depth(:,:,future) = max_bucket_depth_land
+           !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp', NOTE)
+       end where
+   endif
+
    if(id_bucket_depth > 0) used = send_data(id_bucket_depth, bucket_depth(:,:,future), Time)
    if(id_bucket_depth_conv > 0) used = send_data(id_bucket_depth_conv, depth_change_conv(:,:), Time)
    if(id_bucket_depth_cond > 0) used = send_data(id_bucket_depth_cond, depth_change_cond(:,:), Time)
