@@ -125,6 +125,13 @@ logical :: two_stream_gray = .true.
 logical :: do_rrtm_radiation = .false.
 logical :: do_socrates_radiation = .false.
 
+! MML: default swamp bucket off:
+logical :: do_mml_swamp = .false.
+
+! MML: default lakeworld bucket off:
+logical :: do_mml_lakes = .false.
+
+
 ! MiMA uses damping
 logical :: do_damping = .false.
 
