@@ -191,6 +191,7 @@
                                                               !  day of the year = solday \in [0,days per year]
         real(kind=rb)      :: equinox_day=0.75                ! fraction of the year defining NH autumn equinox \in [0,1]
         real(kind=rb)      :: solr_cnst= 1368.22              ! solar constant [W/m2]
+!        real(kind=rb)      :: mml_co2 = 300.0                 ! MML namelist co2 variable for fixed, user controlled co2
 !-------------------------------------------------s--------------------------------------------------------------
 !
 !-------------------- diagnostics fields -------------------------------
@@ -213,7 +214,7 @@
              &lonstep, do_zm_tracers, do_zm_rad, &
              &do_precip_albedo, precip_albedo_mode, precip_albedo, precip_lat,&
              &do_read_co2, co2_file, co2_variable_name, use_dyofyr, solrad, &
-             &solday, equinox_day,solr_cnst, do_scm_ozone, scm_ozone
+             &solday, equinox_day,solr_cnst, do_scm_ozone, scm_ozone !,mml_co2
 
       end module rrtm_vars
 !*****************************************************************************************
@@ -774,6 +775,8 @@
              co2f = co2f_temp
           else
              co2f=co2ppmv*1.e-6
+             ! MML this shouldn't matter, but use the mml_co2 value from the namelist
+             ! co2f=mml_co2*1.e-6
           endif
 
           !interactive albedo: zonal mean of precipitation
