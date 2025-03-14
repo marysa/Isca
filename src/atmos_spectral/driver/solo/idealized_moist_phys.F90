@@ -1387,10 +1387,20 @@ if(bucket) then
 
    where (bucket_depth <= 0.) bucket_depth = 0.
 
+
+   ! MML: For Lakeworld, allow the bucket to become more full than the maximum bucket depth (to conserve water on the land surface).
+   ! Otherwise:
    ! truncate surface reservoir over land points
+   if ( do_mml_lakes ) then
+       where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
+            bucket_depth(:,:,future) = bucket_depth(:,:,future)
+            !max_bucket_depth_land
+       end where
+   else
        where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
             bucket_depth(:,:,future) = max_bucket_depth_land
        end where
+
 
    if(id_bucket_depth > 0) used = send_data(id_bucket_depth, bucket_depth(:,:,future), Time)
    if(id_bucket_depth_conv > 0) used = send_data(id_bucket_depth_conv, depth_change_conv(:,:), Time)
