@@ -81,6 +81,14 @@
         ! heating rates and fluxes, zenith angle when in-between radiation time steps
         real(kind=rb),allocatable,dimension(:,:)   :: sw_flux,lw_flux,zencos, olr, toa_sw! surface and TOA fluxes, cos(zenith angle) 
                                                                             ! dimension (lon x lat)
+
+
+        ! MML flux vars:
+
+        real(kind=rb),allocatable,dimension(:,:)   :: mml_fsds, mml_fsns, mml_fsus, mml_flds, mml_flns, mml_flus, mml_solin ! surface and TOA fluxes, cos(zenith angle) 
+                                                                            ! dimension (lon x lat)
+
+
         real(kind=rb),allocatable,dimension(:,:,:) :: tdt_rad               ! heating rate [K/s]
                                                                             ! dimension (lon x lat x pfull)
         real(kind=rb),allocatable,dimension(:,:,:) :: tdt_sw_rad,tdt_lw_rad ! SW, LW radiation heating rates,
@@ -196,6 +204,9 @@
 !-------------------- diagnostics fields -------------------------------
 
         integer :: id_tdt_rad, id_tdt_sw, id_tdt_lw, id_coszen, id_flux_sw, id_flux_lw, id_olr, id_toa_sw, id_albedo,id_ozone, id_co2, id_fracday, id_half_level_temp, id_full_level_temp
+
+        integer :: id_mml_fsds, id_mml_fsns, id_mml_fsus, id_mml_flds, id_mml_flns, id_mml_flus, id_mml_solin
+
         character(len=14), parameter :: mod_name_rad = 'rrtm_radiation' !s changed parameter name from mod_name to mod_name_rad as compiler objected, presumably because mod_name also defined in idealized_moist_physics.F90 after use rrtm_vars is included. 
         real :: missing_value = -999.
 
@@ -304,6 +315,44 @@
                register_diag_field ( mod_name_rad, 'flux_lw', axes(1:2), Time, &
                  'LW surface flux', &
                  'W/m2', missing_value=missing_value               )
+
+          ! MML register my net sfc / toa fluxes:
+          ! id_mml_fsds, id_mml_fsus, id_mml_fsus, id_mml_flds,
+          ! id_mml_flus, id_mml_flns, id_solin
+          id_mml_fsds = &
+               register_diag_field ( mod_name_rad, 'mml_fsds',axes(1:2), Time, &
+                 'MML downwards SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_fsus = &
+               register_diag_field ( mod_name_rad, 'mml_fsus', axes(1:2), Time, &
+                 'MML upwards SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_fsns = &
+               register_diag_field ( mod_name_rad, 'mml_fsns', axes(1:2), Time, &
+                 'MML net SW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flds = &
+               register_diag_field ( mod_name_rad, 'mml_flds', axes(1:2), Time, &
+                 'MML downwards LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flus = &
+               register_diag_field ( mod_name_rad, 'mml_flus', axes(1:2), Time, &
+                 'MML upwards LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_flns = &
+               register_diag_field ( mod_name_rad, 'mml_flns', axes(1:2), Time, &
+                 'MML net LW surface flux', &
+                 'W/m2', missing_value=missing_value               )
+          id_mml_solin = &
+               register_diag_field ( mod_name_rad, 'mml_solin',axes(1:2), Time, &
+                 'MML TOA SW down', &
+                 'W/m2', missing_value=missing_value               )
+          ! print that we did this? and print value of id_mml_fsds or
+          ! something?
+          !call error_mesg( 'MML rrtm_radiation_init', &
+          !              'Tried to register MML sfc vars, id_mml_flns =
+          !              '//trim(string(id_mml_flns)), WARNING)
+
 	      id_olr = &
 	           register_diag_field ( mod_name_rad, 'olr', axes(1:2), Time, &
 	             'Outgoing LW radiation', &
@@ -468,6 +517,28 @@
              WARNING)
           endif
 
+
+          !MML add allocation for my radiative fluxes, but it has changed and now
+          ! looks much fancier with if statments. Try the old less elegant way:
+        
+          ! MML radiative flux vairable allocation:    
+          if(id_mml_fsns > 0) &
+               allocate(mml_fsns(size(lonb,1)-1,size(latb,2)-1))     
+          if(id_mml_fsds > 0) &
+               allocate(mml_fsds(size(lonb,1)-1,size(latb,2)-1)) 
+          if(id_mml_fsus > 0) &
+               allocate(mml_fsus(size(lonb,1)-1,size(latb,2)-1))  
+          if(id_mml_flns > 0) &
+               allocate(mml_flns(size(lonb,1)-1,size(latb,2)-1))     
+          if(id_mml_flds > 0) &
+               allocate(mml_flds(size(lonb,1)-1,size(latb,2)-1)) 
+          if(id_mml_flus > 0) &
+               allocate(mml_flus(size(lonb,1)-1,size(latb,2)-1))   
+          if(id_mml_solin > 0) &
+               allocate(mml_solin(size(lonb,1)-1,size(latb,2)-1)) 
+          ! MML: Do we not deallocate variables in ISCA? How does that work?  
+
+
           if(store_intermediate_rad .or. id_flux_sw > 0) &
                allocate(sw_flux(size(lonb,1)-1,size(latb,2)-1))
           if(store_intermediate_rad .or. id_flux_lw > 0) &
@@ -594,6 +665,8 @@
           real(kind=rb),dimension(:,:),intent(out),optional :: flux_sw,flux_lw ! surface fluxes [W/m2]
                                                                                ! dimension (lat x lon)
                                                                                ! need to have both or none!
+
+
 !---------------------------------------------------------------------------------------------------------------
 ! Local variables
           integer k,j,i,ij,j1,i1,ij1,kend,dyofyr,seconds,days
@@ -607,6 +680,12 @@
                ,swuflx, swdflx, swuflxc, swdflxc
           real(kind=rb),dimension(size(q,1)/lonstep,size(q,2),size(q,3)  ) :: swijk,lwijk
           real(kind=rb),dimension(size(q,1)/lonstep,size(q,2)) :: swflxijk,lwflxijk
+
+          ! MML add temprorary variables for net surface fluxes
+          real(kind=rb),dimension(size(q,1)/lonstep,size(q,2)) :: mml_fsds_temp,mml_fsus_temp,mml_fsns_temp,mml_flds_temp,mml_flus_temp,mml_flns_temp, mml_solin_temp
+          ! MML add history variables for net surface fluxes (see if I
+          ! can get away with not sending them out of this function)
+
           real(kind=rb),dimension(ncols_rrt,nlay_rrt+1):: phalf,thalf
           real(kind=rb),dimension(ncols_rrt)   :: tsrf,cosz_rr,albedo_rr
           real(kind=rb) :: dlon,dlat,dj,di 
@@ -977,6 +1056,26 @@
              !only surface fluxes are needed
              swflxijk = reshape(swdflx(:,1)-swuflx(:,1),(/ si/lonstep,sj /)) ! net down SW flux
              lwflxijk = reshape(  dflx(:,1)            ,(/ si/lonstep,sj /)) ! down LW flux
+
+             ! MML:
+             ! I think what I need for my surface fluxes is:
+             ! swdflx(:,1), swuflx(:,1), dflx(:,1), and sigma * tsrf**4 
+             ! (they're all the wrong shape)
+             ! oh wait!
+             ! uflx(:,1) and dflx(:,1) are the longwave fluxes I need!
+             ! But I have to reshape them, probably like so:
+             ! lwflxijk = reshape(  uflx(:,sk+1)-dflx(:,sk+1),(/
+             ! si/lonstep,sj /))
+
+             ! MML SW
+             mml_fsds_temp = reshape(  swdflx(:,1)            ,(/si/lonstep,sj /)) 
+             mml_fsus_temp = reshape(  swuflx(:,1)            ,(/si/lonstep,sj /))
+             mml_fsns_temp = reshape(  swdflx(:,1) -  swuflx(:,1)  ,(/si/lonstep,sj /))
+             ! MML LW
+             mml_flds_temp = reshape(  dflx(:,1)            ,(/si/lonstep,sj /)) 
+             mml_flus_temp = reshape(  uflx(:,1)            ,(/si/lonstep,sj /))
+             mml_flns_temp = reshape(  dflx(:,1) -  uflx(:,1)  ,(/si/lonstep,sj /))
+
              dlon=1./lonstep
              do i=1,size(swijk,1)
                 i1 = i+1
@@ -988,9 +1087,26 @@
                    if(do_zm_rad) then
                       flux_sw(ij1,:) = sum(swflxijk,1)/max(1,size(swflxijk,1))
                       flux_lw(ij1,:) = sum(lwflxijk,1)/max(1,size(lwflxijk,1))
+
+                      ! MML surface fluxes:
+                      mml_fsds(ij1,:) = sum(mml_fsds_temp,1)/max(1,size(mml_fsds_temp,1))
+                      mml_fsus(ij1,:) = sum(mml_fsus_temp,1)/max(1,size(mml_fsus_temp,1))
+                      mml_fsns(ij1,:) = sum(mml_fsns_temp,1)/max(1,size(mml_fsns_temp,1))
+                      mml_flds(ij1,:) = sum(mml_flds_temp,1)/max(1,size(mml_flds_temp,1))
+                      mml_flus(ij1,:) = sum(mml_flus_temp,1)/max(1,size(mml_flus_temp,1))
+                      mml_flns(ij1,:) = sum(mml_flns_temp,1)/max(1,size(mml_flns_temp,1))
                    else
                       flux_sw(ij1,:) = di*swflxijk(i1,:) + (1.-di)*swflxijk(i ,:)
                       flux_lw(ij1,:) = di*lwflxijk(i1,:) + (1.-di)*lwflxijk(i ,:)
+
+                      ! MML surface fluxes:
+                      mml_fsds(ij1,:) =  di*mml_fsds_temp(i1,:) + (1.-di)*mml_fsds_temp(i ,:)
+                      mml_fsus(ij1,:) = di*mml_fsus_temp(i1,:) + (1.-di)*mml_fsus_temp(i ,:)
+                      mml_fsns(ij1,:) = di*mml_fsns_temp(i1,:) + (1.-di)*mml_fsns_temp(i ,:)
+                      mml_flds(ij1,:) = di*mml_flds_temp(i1,:) + (1.-di)*mml_flds_temp(i ,:)
+                      mml_flus(ij1,:) = di*mml_flus_temp(i1,:) + (1.-di)*mml_flus_temp(i ,:)
+                      mml_flns(ij1,:) = di*mml_flns_temp(i1,:) + (1.-di)*mml_flns_temp(i ,:)
+
                    endif
                 enddo
              enddo
@@ -1031,6 +1147,9 @@
 		  ! TOA SW:
           if(id_toa_sw > 0)then
              swflxijk = reshape(swdflx(:,sk+1)-swuflx(:,sk+1),(/ si/lonstep,sj /)) ! net TOA SW flux, +ve down
+             
+             mml_solin_temp = reshape(swdflx(:,sk+1) ,(/si/lonstep,sj /)) ! net TOA SW flux, +ve down
+
              dlon=1./lonstep
              do i=1,size(swijk,1)
                 i1 = i+1
@@ -1040,6 +1159,7 @@
                    di = (ij-1)*dlon
                    ij1 = (i-1)*lonstep + ij
                    toa_sw(ij1,:) = di*swflxijk(i1,:) + (1.-di)*swflxijk(i ,:)
+                   mml_solin(ij1,:) = di*mml_solin_temp(i1,:) + (1.-di)*mml_solin_temp(i,:)
                 enddo
              enddo
           endif
@@ -1065,7 +1185,15 @@
           use rrtm_vars,only:         sw_flux,lw_flux,zencos,tdt_rad,tdt_sw_rad,tdt_lw_rad,t_half,&
                                       &id_tdt_rad,id_tdt_sw,id_tdt_lw,id_coszen,&
                                       &id_flux_sw,id_flux_lw,id_albedo,id_ozone, id_co2, id_fracday,&
-									  &id_olr,id_toa_sw,olr,toa_sw, id_half_level_temp, id_full_level_temp
+
+
+                                      &id_mml_fsds,id_mml_fsns,id_mml_fsus,&
+
+                                      &id_mml_flds,id_mml_flns,id_mml_flus, id_mml_solin,&
+                                      &mml_fsds,mml_fsns,mml_fsus,&
+                                      &mml_flds,mml_flns,mml_flus,mml_solin
+
+                                      &id_olr,id_toa_sw,olr,toa_sw, id_half_level_temp, id_full_level_temp
           use diag_manager_mod, only: register_diag_field, send_data
           use time_manager_mod,only:  time_type
 
@@ -1117,6 +1245,40 @@
 		  if ( id_toa_sw > 0 ) then
              used = send_data ( id_toa_sw, toa_sw, Time)
            endif
+        
+
+
+
+!-------------- MML fluxes: -------------
+
+
+
+
+
+!------- MML register my net sfc fluxes:
+                  if (id_mml_fsds > 0 ) then
+                     used = send_data (id_mml_fsds, mml_fsds, Time)
+                  endif
+                  if (id_mml_fsns > 0 ) then
+                     used = send_data (id_mml_fsns, mml_fsns, Time)
+                  endif
+                  if (id_mml_fsus > 0 ) then
+                     used = send_data (id_mml_fsus, mml_fsus, Time)
+                  endif
+                  if (id_mml_flds > 0 ) then
+                     used = send_data (id_mml_flds, mml_flds, Time)
+                  endif
+                  if (id_mml_flns > 0 ) then
+                     used = send_data (id_mml_flns, mml_flns, Time)
+                  endif
+                  if (id_mml_flus > 0 ) then
+                     used = send_data (id_mml_flus, mml_flus, Time)
+                  endif
+                  if (id_mml_solin > 0 ) then
+                     used = send_data (id_mml_solin, mml_solin, Time)
+                  endif
+
+
 !------- Interactive albedo                    ------------
           if ( present(albedo_loc)) then
 !             used = send_data ( id_albedo, albedo_loc, Time, is, js )
