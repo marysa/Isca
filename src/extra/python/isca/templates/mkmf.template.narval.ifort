@@ -6,7 +6,8 @@
 CPPFLAGS = -I/$(EBROOTGENTOO)/include
 
 # RF - this only works if netcdf-fortran is loaded already
-NETCDF_LIBS = `nf-config --fflags --flibs`
+#NETCDF_LIBS = `nf-config --fflags --flibs`
+NETCDF_LIBS = `nc-config --cflags --libs && nf-config --fflags --flibs`
 
 # RF - this is just the default flags from the isca template
 
@@ -25,7 +26,7 @@ NETCDF_LIBS = `nf-config --fflags --flibs`
 #       This suppresses the warning: `warning #6843: A dummy argument with an explicit INTENT(OUT) declaration is not given an explicit value.` of which
 #       there are a lot of instances in the GFDL codebase.
 
-FFLAGS = $(CPPFLAGS) -fpp -stack_temps -safe_cray_ptr -ftz -assume byterecl -shared-intel -i4 -r8 -g -O3 -diag-disable 6843 -mcmodel large
+FFLAGS = $(CPPFLAGS) -fpp -stack-temps -safe-cray-ptr -ftz -assume byterecl -shared-intel -i4 -r8 -g -O3 -diag-disable 6843 -mcmodel large
 FC = $(F90) $(NETCDF_LIBS)
 LD = $(F90) $(NETCDF_LIBS)
 

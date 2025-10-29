@@ -12,7 +12,8 @@
 # directory of the Isca source code
 export GFDL_BASE=/project/def-mlague/shared_sourcecode/ISCA/Isca
 # "environment" configuration for use with ubuntu-conda
-export GFDL_ENV=fir_from_narval
+#export GFDL_ENV=drac_fir2
+export GFDL_ENV=/project/def-mlague/shared_sourcecode/ISCA/Isca/src/extra/env/fir_from_narval
 # temporary working directory used in running the model
 export GFDL_WORK=/scratch/mlague/Isca/Isca_work
 # directory for storing model output
