@@ -1191,7 +1191,7 @@
 
                                       &id_mml_flds,id_mml_flns,id_mml_flus, id_mml_solin,&
                                       &mml_fsds,mml_fsns,mml_fsus,&
-                                      &mml_flds,mml_flns,mml_flus,mml_solin
+                                      &mml_flds,mml_flns,mml_flus,mml_solin, &
 
                                       &id_olr,id_toa_sw,olr,toa_sw, id_half_level_temp, id_full_level_temp
           use diag_manager_mod, only: register_diag_field, send_data

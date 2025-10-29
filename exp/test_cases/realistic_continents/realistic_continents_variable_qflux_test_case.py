@@ -47,6 +47,20 @@ diag.add_field('dynamics', 'temp', time_avg=True)
 diag.add_field('dynamics', 'vor', time_avg=True)
 diag.add_field('dynamics', 'div', time_avg=True)
 
+diag.add_field('rrtm_radiation', 'mml_solin', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_fsns', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_fsds', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_fsus', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_flus', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_flns', time_avg=True)
+diag.add_field('rrtm_radiation', 'mml_flds', time_avg=True)
+
+diag.add_field('rrtm_radiation', 'rrtm_albedo', time_avg=True)
+diag.add_field('rrtm_radiation', 'olr', time_avg=True)
+diag.add_field('rrtm_radiation', 'toa_sw', time_avg=True)
+diag.add_field('rrtm_radiation', 'flux_lw', time_avg=True)
+diag.add_field('rrtm_radiation', 'flux_sw', time_avg=True)
+
 exp.diag_table = diag
 
 
