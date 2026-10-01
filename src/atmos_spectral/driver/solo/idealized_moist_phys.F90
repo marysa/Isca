@@ -129,6 +129,16 @@ logical :: do_socrates_radiation = .false.
 logical :: do_damping = .false.
 
 
+! MML: default swamp bucket off:
+
+logical :: do_mml_swamp = .false.
+
+! MML: default lakeworld bucket off:
+
+logical :: do_mml_lakes = .false.
+
+
+
 logical :: mixed_layer_bc = .false.
 logical :: gp_surface = .false. ! Use Schneider & Liu 2009's prescription of lower-boundary heat flux
 
@@ -164,7 +174,8 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
                                       gp_surface, convection_scheme,                 &
                                       bucket, init_bucket_depth, init_bucket_depth_land, &
                                       max_bucket_depth_land, robert_bucket, raw_bucket, &
-                                      do_socrates_radiation, do_lcl_diffusivity_depth
+                                      do_socrates_radiation, do_lcl_diffusivity_depth, &
+                                      do_mml_swamp, do_mml_lakes   ! MML: add override to make a perpetual swamp
 
 
 integer, parameter :: num_time_levels = 2 ! Add bucket - number of time levels added to allow timestepping in this module
@@ -1378,6 +1389,64 @@ if(bucket) then
                            * (raw_bucket - 1.0)
 
    where (bucket_depth <= 0.) bucket_depth = 0.
+
+
+
+   ! MML: For Lakeworld, allow the bucket to become more full than the maximum bucket depth (to conserve water on the land surface).
+
+   ! Otherwise: 
+
+   ! truncate surface reservoir over land points
+
+   if ( do_mml_lakes ) then
+
+       where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
+
+            bucket_depth(:,:,future) = bucket_depth(:,:,future)
+
+            !max_bucket_depth_land
+
+       end where
+
+   else
+
+       where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))
+
+            bucket_depth(:,:,future) = max_bucket_depth_land
+
+       end where
+
+
+   endif
+
+
+
+
+
+   ! MML: For swampland, set land bucket to always be at max_bucket_depth_land (fill land bucket at each timestep)
+
+   ! it would be much tidier if I were to add a namelist flag for bucket or not, then I wouldn't have to manually come
+
+   ! into the .F90 and turn the bucket into a swamp/turn it off, and could run multiple swamps or not at the same time. Later...
+
+   !call error_mesg('idealized_moist_phys','MML before bucket', NOTE)
+
+   if ( do_mml_swamp ) then
+
+       !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp in loop', NOTE)
+
+       where( land )
+
+           bucket_depth(:,:,future) = max_bucket_depth_land
+
+           !call error_mesg('idealized_moist_phys','MML bucket overriding to swamp', NOTE)
+
+       end where
+
+   endif
+
+
+
 
    ! truncate surface reservoir over land points
        where(land .and. (bucket_depth(:,:,future) > max_bucket_depth_land))

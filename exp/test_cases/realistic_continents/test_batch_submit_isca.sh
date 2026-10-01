@@ -4,6 +4,7 @@
 #SBATCH --time=12:00:00           # Request 1 hour of runtime
 #SBATCH --nodes=1                # Request 1 node
 #SBATCH --ntasks-per-node=16     # Request 16 tasks
+#####SBATCH --nodelist=fc[20343,20445,20453,20465,20255,20436,20546,20550,20257,20301,20302,20444,20104,20133,20209,20346]
 #SBATCH -e slurm-%j.err
 #SBATCH -o slurm-%j.out
 
@@ -28,5 +29,5 @@ source /project/def-mlague/shared_sourcecode/ISCA/isca_venv/bin/activate
 
 # Run the test case
 #python $GFDL_BASE/exp/test_cases/held_suarez/held_suarez_test_case.py
-python $GFDL_BASE/exp/test_cases/realistic_continents/realistic_continents_fixed_sst_test_case.py
+python $GFDL_BASE/exp/test_cases/realistic_continents/realistic_continents_variable_qflux_test_case.py
 
