@@ -1,0 +1,20 @@
+# directory of the Isca source code
+export GFDL_BASE=/project/rrg-mlague/mlague/model_code//Isca2026/
+# "environment" configuration for use with ubuntu-conda
+export GFDL_ENV=/project/rrg-mlague/mlague/model_code/Isca2026/src/extra/env/fir_from_narval
+# temporary working directory used in running the model
+export GFDL_WORK=/scratch/mlague/Isca/Isca_work
+# directory for storing model output
+export GFDL_DATA=/scratch/mlague/Isca/Isca_output
+# directory for SOC
+export GFDL_SOC=/project/rrg-mlague/mlague/model_code/Isca2026/src/atmos_param/socrates/trunk/
+
+# Load modules
+source $GFDL_ENV
+export LD_LIBRARY_PATH=$NETCDF_C_ROOT/lib:$NETCDF_FORTRAN_ROOT/lib:$LD_LIBRARY_PATH
+
+# Activate Isca virtual environment
+source /project/rrg-mlague/mlague/model_code//Isca2026/isca_venv2026/bin/activate
+
+
+
